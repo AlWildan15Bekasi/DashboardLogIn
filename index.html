@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Dashboard Ekstrakurikuler - Al Wildan 15</title>
-
+  
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png">
   
@@ -475,7 +475,11 @@
       }
 
       // Render Baris per Siswa
-      currentUser.siswa.forEach((namaSiswa, index) => {
+      currentUser.siswa.forEach((siswaObj, index) => {
+        // BUG FIXED: Karena struktur siswa sekarang array of object, ekstrak namanya dulu
+        const namaSiswa = siswaObj.nama;
+        const kelasSiswa = siswaObj.kelas;
+
         // Cari history absen siswa ini di bulan yang dipilih
         const historyW1 = currentUser.absensi.find(a => a.siswa === namaSiswa && a.bulan === bulanPilih && a.minggu === "Week 1");
         const historyW2 = currentUser.absensi.find(a => a.siswa === namaSiswa && a.bulan === bulanPilih && a.minggu === "Week 2");
@@ -490,12 +494,17 @@
         const tr = document.createElement('tr');
         tr.className = "border-b border-slate-100 hover:bg-slate-50 transition";
         tr.innerHTML = `
-          <td class="p-4 text-center text-slate-500">${index + 1}</td>
-          <td class="p-4 font-semibold text-blue-900" data-siswa="${namaSiswa}">${namaSiswa}</td>
-          <td class="p-4 text-center border-l border-slate-100"><input type="checkbox" class="absen-checkbox accent-blue-600 w1" ${ckW1}></td>
-          <td class="p-4 text-center border-l border-slate-100"><input type="checkbox" class="absen-checkbox accent-blue-600 w2" ${ckW2}></td>
-          <td class="p-4 text-center border-l border-slate-100"><input type="checkbox" class="absen-checkbox accent-blue-600 w3" ${ckW3}></td>
-          <td class="p-4 text-center border-l border-slate-100"><input type="checkbox" class="absen-checkbox accent-blue-600 w4" ${ckW4}></td>
+          <td class="p-4 text-center text-slate-500 align-middle">${index + 1}</td>
+          <td class="p-4">
+            <div class="flex flex-col">
+              <span class="font-semibold text-blue-900" data-siswa="${namaSiswa}">${namaSiswa}</span>
+              <span class="text-[11px] text-slate-500 font-medium tracking-wide mt-0.5">${kelasSiswa}</span>
+            </div>
+          </td>
+          <td class="p-4 text-center border-l border-slate-100 align-middle"><input type="checkbox" class="absen-checkbox accent-blue-600 w1" ${ckW1}></td>
+          <td class="p-4 text-center border-l border-slate-100 align-middle"><input type="checkbox" class="absen-checkbox accent-blue-600 w2" ${ckW2}></td>
+          <td class="p-4 text-center border-l border-slate-100 align-middle"><input type="checkbox" class="absen-checkbox accent-blue-600 w3" ${ckW3}></td>
+          <td class="p-4 text-center border-l border-slate-100 align-middle"><input type="checkbox" class="absen-checkbox accent-blue-600 w4" ${ckW4}></td>
         `;
         tbody.appendChild(tr);
       });
@@ -512,17 +521,20 @@
       
       let payloadAbsen = [];
       barisSiswa.forEach(tr => {
-        const namaSiswa = tr.querySelector('td[data-siswa]').getAttribute('data-siswa');
-        const isW1 = tr.querySelector('.w1').checked;
-        const isW2 = tr.querySelector('.w2').checked;
-        const isW3 = tr.querySelector('.w3').checked;
-        const isW4 = tr.querySelector('.w4').checked;
+        const spanSiswa = tr.querySelector('span[data-siswa]');
+        if (spanSiswa) {
+            const namaSiswa = spanSiswa.getAttribute('data-siswa');
+            const isW1 = tr.querySelector('.w1').checked;
+            const isW2 = tr.querySelector('.w2').checked;
+            const isW3 = tr.querySelector('.w3').checked;
+            const isW4 = tr.querySelector('.w4').checked;
 
-        // Kumpulkan data ke array untuk dikirim ke server
-        payloadAbsen.push({ siswa: namaSiswa, minggu: "Week 1", status: isW1 ? "Hadir" : "Alpha" });
-        payloadAbsen.push({ siswa: namaSiswa, minggu: "Week 2", status: isW2 ? "Hadir" : "Alpha" });
-        payloadAbsen.push({ siswa: namaSiswa, minggu: "Week 3", status: isW3 ? "Hadir" : "Alpha" });
-        payloadAbsen.push({ siswa: namaSiswa, minggu: "Week 4", status: isW4 ? "Hadir" : "Alpha" });
+            // Kumpulkan data ke array untuk dikirim ke server
+            payloadAbsen.push({ siswa: namaSiswa, minggu: "Week 1", status: isW1 ? "Hadir" : "Alpha" });
+            payloadAbsen.push({ siswa: namaSiswa, minggu: "Week 2", status: isW2 ? "Hadir" : "Alpha" });
+            payloadAbsen.push({ siswa: namaSiswa, minggu: "Week 3", status: isW3 ? "Hadir" : "Alpha" });
+            payloadAbsen.push({ siswa: namaSiswa, minggu: "Week 4", status: isW4 ? "Hadir" : "Alpha" });
+        }
       });
 
       try {
@@ -564,7 +576,6 @@
         hideLoader(); alert("Terjadi kesalahan jaringan.");
       }
     });
-
 
     // ==========================================
     // LOGIKA DASHBOARD SISWA (SEPERTI SEBELUMNYA)
