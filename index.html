@@ -176,7 +176,7 @@
           </div>
           <p class="text-sm text-slate-500 font-semibold uppercase tracking-wider mb-1">Estimasi Honor Bulan Ini</p>
           <p class="text-3xl font-extrabold text-blue-900" id="guru-total-honor">Rp 0</p>
-          <p class="text-xs text-slate-400 mt-2">*Dihitung dari total kehadiran bulan yang dipilih</p>
+          <p class="text-xs text-slate-400 mt-2">*Dihitung otomatis sesuai tarif ekskul</p>
         </div>
       </div>
 
@@ -358,6 +358,25 @@
       });
     }
 
+    // Modern Message Box / Toast (Menggantikan alert bawaan)
+    function showMessage(msg, type = 'info') {
+      const div = document.createElement('div');
+      const bg = type === 'error' ? 'bg-red-600' : 'bg-blue-800';
+      const icon = type === 'error' ? 'alert-circle' : 'check-circle-2';
+      
+      div.className = `fixed top-6 right-6 ${bg} text-white px-5 py-3 rounded-xl shadow-2xl z-[9999] fade-in flex items-center gap-3 border border-white/20 transition-all duration-300`;
+      div.innerHTML = `<i data-lucide="${icon}" class="w-5 h-5"></i> <span class="font-medium text-sm">${msg}</span>`;
+      
+      document.body.appendChild(div);
+      lucide.createIcons();
+      
+      setTimeout(() => {
+        div.style.opacity = '0';
+        div.style.transform = 'translateY(-10px)';
+        setTimeout(() => div.remove(), 300);
+      }, 3500);
+    }
+
     // === LOGIN PROSES ===
     document.getElementById('login-form').addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -432,7 +451,6 @@
       document.getElementById('welcome-guru-name').innerText = currentUser.nama;
       document.getElementById('guru-ekskul-name').innerText = currentUser.ekskul;
       document.getElementById('guru-total-siswa').innerText = currentUser.siswa.length;
-      // Honor tidak diset di sini lagi, tapi dipindah ke renderTabelAbsen agar menyesuaikan dropdown bulan
 
       // Setup Dropdown Bulan (Default bulan ini)
       const selectBulan = document.getElementById('absen-bulan-select');
@@ -455,19 +473,43 @@
     document.getElementById('absen-bulan-select').addEventListener('change', renderTabelAbsen);
     document.getElementById('btn-refresh-absen').addEventListener('click', renderTabelAbsen);
 
+    // FUNGSI PERHITUNGAN HONOR DINAMIS
     function renderTabelAbsen() {
       const tbody = document.getElementById('tabel-absen-body');
       const bulanPilih = document.getElementById('absen-bulan-select').value;
       tbody.innerHTML = '';
 
-      // Hitung honor khusus untuk bulan yang sedang dipilih
+      // --- LOGIKA HITUNG HONOR BARU ---
       let honorBulanIni = 0;
-      currentUser.absensi.forEach(a => {
-        if(a.bulan === bulanPilih && a.status === "Hadir") {
-          honorBulanIni += 20000;
-        }
-      });
+      let namaEkskul = currentUser.ekskul.toLowerCase();
+      
+      // Jika ekskul adalah Robotic atau Panahan
+      if (namaEkskul.includes('robotic') || namaEkskul.includes('robotik') || namaEkskul.includes('panahan')) {
+        let siswaAktifBulanIni = new Set();
+        
+        currentUser.absensi.forEach(a => {
+          // Cari anak yang hadir minimal 1 kali di bulan terpilih
+          if (a.bulan === bulanPilih && a.status === "Hadir") {
+            siswaAktifBulanIni.add(a.siswa);
+          }
+        });
+        
+        // 135rb per anak yang hadir minimal 1x
+        honorBulanIni = siswaAktifBulanIni.size * 135000; 
+      } 
+      // Jika ekskul lain (Science, Futsal, dll)
+      else {
+        let tarifPerHadir = currentUser.tarifHonor || 20000; // Tarik dari database, fallback 20k
+        
+        currentUser.absensi.forEach(a => {
+          if (a.bulan === bulanPilih && a.status === "Hadir") {
+            honorBulanIni += tarifPerHadir;
+          }
+        });
+      }
+
       document.getElementById('guru-total-honor').innerText = "Rp " + honorBulanIni.toLocaleString('id-ID');
+      // --------------------------------
 
       if (currentUser.siswa.length === 0) {
         tbody.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-slate-500">Belum ada siswa aktif di ekskul ini.</td></tr>`;
@@ -476,9 +518,9 @@
 
       // Render Baris per Siswa
       currentUser.siswa.forEach((siswaObj, index) => {
-        // BUG FIXED: Karena struktur siswa sekarang array of object, ekstrak namanya dulu
-        const namaSiswa = siswaObj.nama;
-        const kelasSiswa = siswaObj.kelas;
+        // Ambil nama dan kelas dari format data terbaru
+        const namaSiswa = typeof siswaObj === 'object' ? siswaObj.nama : siswaObj;
+        const kelasSiswa = typeof siswaObj === 'object' ? siswaObj.kelas : "-";
 
         // Cari history absen siswa ini di bulan yang dipilih
         const historyW1 = currentUser.absensi.find(a => a.siswa === namaSiswa && a.bulan === bulanPilih && a.minggu === "Week 1");
@@ -495,7 +537,7 @@
         tr.className = "border-b border-slate-100 hover:bg-slate-50 transition";
         tr.innerHTML = `
           <td class="p-4 text-center text-slate-500 align-middle">${index + 1}</td>
-          <td class="p-4">
+          <td class="p-4 align-middle">
             <div class="flex flex-col">
               <span class="font-semibold text-blue-900" data-siswa="${namaSiswa}">${namaSiswa}</span>
               <span class="text-[11px] text-slate-500 font-medium tracking-wide mt-0.5">${kelasSiswa}</span>
@@ -551,34 +593,45 @@
         const result = await response.json();
 
         if (result.status === "success") {
-          // Update data lokal agar saat ganti bulan tidak hilang (tanpa perlu reload)
+          // Update data lokal agar saat ganti bulan tidak hilang
           payloadAbsen.forEach(item => {
             let exist = currentUser.absensi.find(a => a.siswa === item.siswa && a.bulan === bulanPilih && a.minggu === item.minggu);
             if(exist) exist.status = item.status;
             else currentUser.absensi.push({ bulan: bulanPilih, minggu: item.minggu, siswa: item.siswa, status: item.status });
           });
 
-          // Kalkulasi ulang honor lokal khusus bulan ini
+          // --- REKALKULASI HONOR SETELAH SIMPAN ---
           let totalHonorBaru = 0;
-          currentUser.absensi.forEach(a => { 
-            if(a.bulan === bulanPilih && a.status === "Hadir") {
-              totalHonorBaru += 20000; 
-            }
-          });
+          let namaEkskul = currentUser.ekskul.toLowerCase();
+          
+          if (namaEkskul.includes('robotic') || namaEkskul.includes('robotik') || namaEkskul.includes('panahan')) {
+            let siswaAktifBulanIni = new Set();
+            currentUser.absensi.forEach(a => {
+              if (a.bulan === bulanPilih && a.status === "Hadir") siswaAktifBulanIni.add(a.siswa);
+            });
+            totalHonorBaru = siswaAktifBulanIni.size * 135000;
+          } else {
+            let tarifPerHadir = currentUser.tarifHonor || 20000;
+            currentUser.absensi.forEach(a => { 
+              if(a.bulan === bulanPilih && a.status === "Hadir") totalHonorBaru += tarifPerHadir; 
+            });
+          }
+          
           document.getElementById('guru-total-honor').innerText = "Rp " + totalHonorBaru.toLocaleString('id-ID');
+          // ----------------------------------------
 
           hideLoader();
-          setTimeout(() => alert(`Absensi bulan ${bulanPilih} berhasil disimpan!`), 300);
+          showMessage(`Absensi bulan ${bulanPilih} berhasil disimpan!`);
         } else {
-          hideLoader(); alert("Gagal menyimpan: " + result.message);
+          hideLoader(); showMessage("Gagal menyimpan: " + result.message, 'error');
         }
       } catch (error) {
-        hideLoader(); alert("Terjadi kesalahan jaringan.");
+        hideLoader(); showMessage("Terjadi kesalahan jaringan.", 'error');
       }
     });
 
     // ==========================================
-    // LOGIKA DASHBOARD SISWA (SEPERTI SEBELUMNYA)
+    // LOGIKA DASHBOARD SISWA
     // ==========================================
     function getIcon(nama) {
       const n = nama.toLowerCase();
@@ -709,9 +762,9 @@
         if(result.status === "success") {
           selectedEkskulForAction.status = "Non-Aktif";
           renderEkskulStatus(); renderPaymentStatus();
-          hideLoader(); setTimeout(() => alert("Berhasil keluar dari " + selectedEkskulForAction.nama), 300);
-        } else { hideLoader(); alert("Gagal: " + result.message); }
-      } catch(error) { hideLoader(); alert("Gagal terhubung."); }
+          hideLoader(); setTimeout(() => showMessage("Berhasil keluar dari " + selectedEkskulForAction.nama), 300);
+        } else { hideLoader(); showMessage("Gagal: " + result.message, 'error'); }
+      } catch(error) { hideLoader(); showMessage("Gagal terhubung.", 'error'); }
     });
 
     function openModalBayar(ekskulId) {
@@ -737,7 +790,7 @@
       e.preventDefault();
       const file = document.getElementById('bayar-bukti').files[0];
       const bln = document.getElementById('bayar-bulan').value;
-      if(!bln) { alert("Pilih bulan!"); return; } if(!file) { alert("Upload bukti!"); return; }
+      if(!bln) { showMessage("Pilih bulan!", 'error'); return; } if(!file) { showMessage("Upload bukti!", 'error'); return; }
 
       closeModal('modal-bayar'); showLoader('Mengupload...');
       try {
@@ -752,9 +805,9 @@
           selectedEkskulForAction.pembayaran.belum = selectedEkskulForAction.pembayaran.belum.filter(b => b !== bln);
           selectedEkskulForAction.pembayaran.lunas.push(bln);
           renderPaymentStatus();
-          hideLoader(); setTimeout(() => alert(`Pembayaran bulan ${bln} berhasil dicatat!`), 300);
-        } else { hideLoader(); alert("Gagal: " + result.message); }
-      } catch (error) { hideLoader(); alert("Kesalahan jaringan."); }
+          hideLoader(); setTimeout(() => showMessage(`Pembayaran bulan ${bln} berhasil dicatat!`), 300);
+        } else { hideLoader(); showMessage("Gagal: " + result.message, 'error'); }
+      } catch (error) { hideLoader(); showMessage("Kesalahan jaringan.", 'error'); }
     });
   </script>
 </body>
